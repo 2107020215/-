@@ -1,0 +1,238 @@
+import requests
+from bs4 import BeautifulSoup
+import xlwt
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib import rcParams
+from pathlib import Path
+#导入全部所需要安装的库，运行正常
+
+
+#以下为数据获取
+#定义爬虫部分数据获取
+def get_data():
+    url="http://tianqihoubao.com/weather/top/qingdao.html"
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.67 Safari/537.36 Edg/87.0.664.47'}
+    html = requests.get(url, headers=headers)#加一个chrome的头来防止拒绝访问
+    bianliang=html.text
+    #print(html.content.decode('utf8'))
+    soup = BeautifulSoup(bianliang,"html.parser")
+    data1=soup.find_all('tr')
+    print(data1)
+    
+    
+    #以下为数据处理部分
+    day,conditions,hitem,lotem ,wind=[],[],[],[],[]
+    for row in data1[2:]:
+        cols=[col.text.split() for col in row.find_all('td')]
+        if len(cols)==0 :
+            continue
+        day.append(cols[1])
+        conditions.append(cols[2])
+        hitem.append(cols[4])
+        lotem.append(cols[7])
+        wind.append(cols[3])
+    #根据已经获得的数据创建表格
+    tianqi_form=pd.DataFrame()#此处使用numpy和pandas
+    tianqi_form["日期"]=day
+    tianqi_form["天气"]=conditions
+    tianqi_form["最高气温"]=hitem
+    tianqi_form["最低气温"]=lotem
+    tianqi_form["风向风力"]=wind
+    return tianqi_form#使用pandas建立一个表格，然后把这个表格进行返回变量
+    
+#以下为数据保存部分
+tianqi=get_data()#返回获得的数据和表格
+tianqi.to_csv('qingdao.csv',index=False,encoding='utf-8')
+print('已完成数据收集')
+
+
+    
+    
+
+
+# In[2]:
+
+
+#以下为数据分析部分
+
+import matplotlib.pyplot as plt
+from matplotlib import rcParams
+plt.rcParams["font.sans-serif"]=["SimHei"] #设置字体
+plt.rcParams["axes.unicode_minus"]=False #该语句解决图像中的“-”负号的乱码问题
+
+
+data=pd.read_csv(r"qingdao.csv")#读取excel数据
+#对齐数据,让原始数据更加好看一点，否贼就会真的很乱
+pd.set_option('display.unicode.ambiguous_as_wide', True)  #处理数据的列标题与数据无法对齐的情况
+pd.set_option('display.unicode.east_asian_width', True)   #无法对齐主要是因为列标题是中文
+pd.set_option('display.max_rows', 1000)#行数设置为1000
+pd.set_option('display.max_columns', 10)#列数设置为10
+pd.set_option('display.width', 1000000)
+
+#对字符串进行处理，把温度搞成纯数字,把里面不规矩的东西换掉
+data["最高气温"]=data["最高气温"].map(lambda x:int(x.replace("℃",'').replace("']",'').replace("['",'')))
+data["最低气温"]=data["最低气温"].map(lambda x:int(x.replace("℃",'').replace("']",'').replace("['",'')))
+data["日期"]=data["日期"].map(lambda x:x.replace("(星期日)",'').replace("']",'').replace("['",'').replace("(星期六)",''))
+data["天气"]=data["天气"].map(lambda x:x.replace("中雨","雨").replace("']",'').replace("['",'').replace("雷阵雨","雨").replace("小雨","雨"))
+data["风向风力"]=data["风向风力"].map(lambda x:x.replace("东南风","东南").replace("']",'').replace("['",'').replace("西南风","西南").replace("', '",""))
+
+#这个是对原来数据的修订：内容分别是
+#把温度换成int方便计算，去掉格子和逗号整齐一点，方便计数化
+print(data)
+#这样一来我就把dataform搞得一个有模有样的表格了
+#之后就可以好好对里面数据进行分析和处理
+
+
+#绘图函数，以下为数据分析部分
+def zhexiantu():#气温折线图
+    hi=data["最高气温"][::-1]
+    lo=data["最低气温"][::-1]
+    day=data["日期"][::-1]
+    fig = plt.figure(dpi=128,figsize=(8,4))
+    plt.plot(day,hi,c='red',alpha=0.9)
+    plt.plot(day,lo,c='blue',alpha=0.9)
+    plt.fill_between(day,hi,lo,facecolor='green',alpha=0.2)
+    plt.title("青岛市最近一个月的气温变化折线图",fontsize=10)
+    plt.xlabel('',fontsize=6)
+    plt.tick_params(axis='x', labelsize=8)    # 设置x轴标签大小
+    fig.autofmt_xdate()
+    plt.ylabel('气温',fontsize=15)
+    plt.show()
+
+
+#在这里确实学到了一点新的东西，原本我的思路是用for遍历一下这个dataseries，但是for i in data["天气"]会报错
+#正确思路是，要么直接函数统计，要么for i in range ，然后data["tianqi"][i]才可以，毕竟二级数组
+
+#在下面绘图的方法里面使用到了pandas，matplotlib，还有numpy
+
+def leidatu():#风力风向雷达图
+    rcParams['font.family']='simhei'#字体设置
+    plt.rcParams['font.family'] = ['sans-serif']#如果是windows系统请去掉这行注释
+    plt.rcParams['font.sans-serif'] = ['SimHei']#如果是windows系统请去掉这行注释
+    plt.rcParams["font.family"] = 'Arial Unicode MS'
+#用于正常显示符号
+    plt.rcParams['axes.unicode_minus'] = False
+    wind=data["风向风力"].value_counts()
+    list1=wind.index.tolist() #获取行索引#其实你想到的办法很简单就是拆分字符串，反正长度一样，
+    list2=wind.values.tolist()
+    list3=[]
+    c,d,e,f=0,0,0,0
+    for i in range(0,6):
+        a=list1[i]
+        b=a[0:2]
+        if  b=="东南":
+            c=c+list2[i]
+        elif b=="南风":
+            d=d+list2[i]
+        elif b=="北风":
+            e=e+list2[i]
+        elif b=="西南":
+            f=f+list2[i]
+    list3.append(int(c))
+    list3.append(int(d))
+    list3.append(int(e))
+    list3.append(int(f))
+    list3.append(0)
+    list3.append(0)
+    list3.append(0)
+    list3.append(0)
+    list3.append(int(c))
+    list4=["东南","南风","北风","西南",'东风','西风','东北','西北','东南']
+    
+    
+    theta = np.array([0.25,0.5,0.75,1,1.25,1.5,1.75,2,0.25])
+    plt.polar(theta*np.pi, list3, 'ro-', lw=1)   # 'ro'红色圆点
+    plt.fill(theta*np.pi, list3, facecolor='y', alpha=0.3)
+    plt.ylim(0,15)
+  
+    plt.thetagrids(theta*180,list4, fontproperties='simhei')
+  
+    plt.show()
+    
+
+    
+    
+
+
+
+
+
+
+
+# In[3]:
+
+
+zhexiantu()
+
+
+# In[7]:
+
+
+def bingtu(): #天气情况饼状图
+        rcParams['font.family']='simhei'#字体设置
+        a=data["天气"].value_counts()
+        list1=a.index.tolist() #获取行索引
+        list2=a.values.tolist()#获取总的value
+        plt.figure(figsize=(10,6))
+        explode=[0.05,0.05,0.05,0.05,0.05,0.05]
+        plt.pie(x = list2,labels = list1,autopct='%1.1f%%',labeldistance=1.1,explode=explode)
+        plt.tick_params(axis='x', labelsize=6) 
+        plt.title('最近一个月青岛天气情况统计图',fontsize=15)
+        plt.show()
+bingtu()
+
+
+# In[5]:
+
+
+leidatu()
+
+
+# In[3]:
+
+
+#可视化操作系统
+def menu0():
+        # 输出一级菜单
+    
+        print('''
+                ╔*********最近青岛市天气可视化小系统**************╗
+                 |                                                  |
+                 |====================-功能菜单-====================|
+                 |                                                  |
+                 |请通过回复功能前的数字选择一个操作：              |
+                 |                                                  |
+                 | 1. 气温折线图                                    |
+                 | 2. 天气饼状图                                    | 
+                 | 3. 数据雷达图                                    | 
+                 | 4. 数据表格                                      | 
+                 | 0. 退出系统                                      |
+                ╚--------------------------------------------------╝
+                ''')
+while 1:
+        menu0()
+        case=int(input("请输入要实现的功能："))
+        if case==1:
+                    zhexiantu()
+                  
+
+        elif case==2:
+                    bingtu()
+                   
+                
+        elif case == 3:
+                    leidatu()
+        elif case==4:
+                    print(data)
+                   
+        elif case == 0:
+                    print("欢迎您下次使用，再见")
+                    break
+        else:
+                    print("输入错误，请重新输入！！！")
+        
+
+
+# In[ ]:
